@@ -1,0 +1,52 @@
+name: tests
+
+# The suites are plain HTML pages that print their own results, so CI is just
+# "open them in headless Chrome and check what they printed". No package manager,
+# no test runner, nothing to keep up to date.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chrome version
+        run: google-chrome --version
+
+      - name: Rules suite and game simulation
+        run: |
+          set -euo pipefail
+          failed=0
+          for page in tests smoke; do
+            echo "── $page.html ────────────────────────────────"
+            dom=$(google-chrome --headless --disable-gpu --no-sandbox \
+                    --dump-dom --virtual-time-budget=60000 \
+                    "file://$PWD/$page.html")
+
+            # The literal in the <script> reads "RESULT ' + pass", so requiring
+            # digits here matches only the rendered result, never the source.
+            result=$(printf '%s' "$dom" | grep -o 'RESULT [0-9]\+/[0-9]\+ - [A-Z ]*' | head -1 || true)
+
+            if [ -z "$result" ]; then
+              echo "::error::$page.html produced no result — the page did not run"
+              failed=1
+              continue
+            fi
+
+            echo "$result"
+            case "$result" in
+              *"ALL PASS") ;;
+              *)
+                echo "::error::$page.html reported failures"
+                printf '%s' "$dom" | grep -o 'FAIL  [^<]*' || true
+                failed=1
+                ;;
+            esac
+          done
+          exit $failed

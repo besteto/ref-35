@@ -1,0 +1,98 @@
+<!doctype html><meta charset="utf-8"><title>Auris Merge — full-game simulation</title>
+<style>body{font:13px ui-monospace,monospace;background:#111;color:#ddd;padding:20px}h2{color:#d4af6a}</style>
+<h2>Auris Merge — 500 simulated birthday games</h2><pre id="out"></pre>
+<script src="src/rules.js"></script>
+<script>
+/* Plays whole games the way a person actually would: take a merge if one is on
+   the tray, otherwise reach into the pouch. Confirms the tray always resolves,
+   and measures how many taps 35 points really costs — which is the claim that
+   "1-3 minutes" rests on. */
+var R = Rules, lines = [], pass = 0, fail = 0;
+function ok(name, cond, extra) {
+  if (cond) { pass++; lines.push('  ok  ' + name); }
+  else { fail++; lines.push('FAIL  ' + name + (extra ? '  <- ' + extra : '')); }
+}
+
+function findMerges(s) {
+  var out = [];
+  for (var i = 0; i < R.CELLS; i++) {
+    if (!s.cells[i]) continue;
+    for (var j = 0; j < R.CELLS; j++) {
+      if (i !== j && R.classify(s, i, j) === 'merge') out.push([i, j]);
+    }
+  }
+  return out;
+}
+
+function tally(s, into) {
+  for (var i = 0; i < R.CELLS; i++) if (s.cells[i]) into[s.cells[i].collection]++;
+}
+
+function playOne(seed, mix) {
+  var s = R.createState(seed);
+  var actions = 0, pouch = 0, relieved = 0, guard = 0;
+  tally(s, mix);
+  while (!R.isComplete(s)) {
+    if (++guard > 4000) return null;                    // runaway: fail the run
+    var merges = findMerges(s);
+    if (merges.length) {
+      var m = merges[Math.floor(s.rng() * merges.length)];
+      R.apply(s, m[0], m[1]);
+      tally(s, mix);
+      actions++;
+    } else if (R.emptyCells(s).length) {
+      R.spawn(s); actions++; pouch++;                   // reach into the pouch
+    } else {
+      R.relieve(s); relieved++;                         // jammed: unjam, never lose
+    }
+  }
+  return { actions: actions, pouch: pouch, relieved: relieved, score: s.score };
+}
+
+var runs = [], broken = 0;
+var mix = { cassiopea: 0, marchesa: 0, farfalla: 0 };
+for (var seed = 1; seed <= 500; seed++) {
+  var r = playOne(seed, mix);
+  if (!r) { broken++; continue; }
+  runs.push(r);
+}
+
+ok('every game finished without stalling', broken === 0, broken + ' stalled');
+ok('every game reached the target', runs.every(function (r) { return r.score >= R.TARGET; }));
+
+var acts = runs.map(function (r) { return r.actions; }).sort(function (a, b) { return a - b; });
+var mean = Math.round(acts.reduce(function (a, b) { return a + b; }, 0) / acts.length);
+var min = acts[0], max = acts[acts.length - 1], p50 = acts[Math.floor(acts.length / 2)];
+
+/* Seven finished pieces at three merges each is 21 drags. Anything a player
+   leaves half-built when the target lands adds a couple more. */
+var SEC_PER_DRAG = 1.35;
+ok('median play is around half a minute',
+   p50 * SEC_PER_DRAG >= 22 && p50 * SEC_PER_DRAG <= 42,
+   'median ' + p50 + ' drags = ' + (p50 * SEC_PER_DRAG).toFixed(0) + 's');
+ok('even the slowest game stays under a minute',
+   max * SEC_PER_DRAG <= 60, 'worst ' + max + ' drags = ' + (max * SEC_PER_DRAG).toFixed(0) + 's');
+ok('the target is exactly seven finished pieces',
+   R.TARGET / R.SCORING.birthday[3] === R.EAR_SLOTS,
+   R.TARGET / R.SCORING.birthday[3] + ' pieces vs ' + R.EAR_SLOTS + ' piercings');
+
+/* The spawn bias must help pairs form without letting one collection run away
+   and squeeze the other two off the tray. */
+var total = mix.cassiopea + mix.marchesa + mix.farfalla;
+var shares = R.COLLECTIONS.map(function (c) { return mix[c] / total; });
+ok('all three collections keep sharing the tray',
+   Math.min.apply(null, shares) > 0.26 && Math.max.apply(null, shares) < 0.40,
+   shares.map(function (v) { return (v * 100).toFixed(1) + '%'; }).join(' / '));
+
+var jams = runs.reduce(function (a, r) { return a + r.relieved; }, 0);
+ok('the anti-jam rule is a safety net, not the norm',
+   jams / runs.length < 1.0, (jams / runs.length).toFixed(2) + ' unjams per game');
+
+document.getElementById('out').textContent =
+  lines.join('\n') +
+  '\n\ntaps to 35:  min ' + min + '   median ' + p50 + '   mean ' + mean + '   max ' + max +
+  '\nat 1.2s/tap: median ' + (p50 * 1.2 / 60).toFixed(1) + ' min,  worst ' + (max * 1.2 / 60).toFixed(1) + ' min' +
+  '\npouch taps:  mean ' + (runs.reduce(function (a, r) { return a + r.pouch; }, 0) / runs.length).toFixed(1) +
+  '\nunjams:      ' + (jams / runs.length).toFixed(2) + ' per game' +
+  '\n\nRESULT ' + pass + '/' + (pass + fail) + (fail ? ' - ' + fail + ' FAILED' : ' - ALL PASS');
+</script>

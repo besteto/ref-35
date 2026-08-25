@@ -1,0 +1,172 @@
+<!doctype html><meta charset="utf-8"><title>Auris Merge — rules tests</title>
+<style>body{font:13px ui-monospace,monospace;background:#111;color:#ddd;padding:20px}
+.f{color:#ff6b6b}.p{color:#6bcf7f}h2{color:#d4af6a}</style>
+<h2>Auris Merge — rules.js</h2><pre id="out"></pre>
+<script src="src/rules.js"></script>
+<script>
+var R = Rules, pass = 0, fail = 0, lines = [];
+function ok(name, cond, extra) {
+  if (cond) { pass++; lines.push('  ok  ' + name); }
+  else { fail++; lines.push('FAIL  ' + name + (extra ? '  <- ' + extra : '')); }
+}
+function eq(name, actual, expected) {
+  ok(name, actual === expected, 'got ' + JSON.stringify(actual) + ', want ' + JSON.stringify(expected));
+}
+function blank(seed) {
+  var s = R.createState(seed === undefined ? 1 : seed);
+  s.cells = new Array(R.CELLS).fill(null); s.score = 0; return s;
+}
+function put(s, i, col, tier) {
+  s.cells[i] = { id: ++s.seq, collection: col, tier: tier, born: s.seq };
+  return s.cells[i];
+}
+function evs(list, type) { return list.filter(function (e) { return e.type === type; }); }
+function blankPair(col, tier) {
+  var s = blank(); put(s, 0, col, tier); put(s, 1, col, tier); return s;
+}
+
+/* --- construction ------------------------------------------------------- */
+var s = R.createState(42);
+eq('createState fills the tray with START_PIECES', R.CELLS - R.emptyCells(s).length, 10);
+ok('every starting piece is tier 1', s.cells.every(function (p) { return !p || p.tier === 1; }));
+eq('createState starts at zero score', s.score, 0);
+
+var a1 = R.createState(7), a2 = R.createState(7), a3 = R.createState(8);
+eq('same seed replays the same tray', JSON.stringify(a1.cells), JSON.stringify(a2.cells));
+ok('a different seed gives a different tray', JSON.stringify(a1.cells) !== JSON.stringify(a3.cells));
+
+/* --- canMerge ------------------------------------------------------------ */
+var A = { collection: 'cassiopea', tier: 1 }, B = { collection: 'cassiopea', tier: 1 };
+ok('twins merge', R.canMerge(A, B));
+ok('different collections do not merge', !R.canMerge(A, { collection: 'marchesa', tier: 1 }));
+ok('different tiers do not merge', !R.canMerge(A, { collection: 'cassiopea', tier: 2 }));
+ok('top tier cannot merge further',
+   !R.canMerge({ collection: 'cassiopea', tier: 3 }, { collection: 'cassiopea', tier: 3 }));
+ok('a piece cannot merge with itself', !R.canMerge(A, A));
+ok('null never merges', !R.canMerge(A, null) && !R.canMerge(null, null));
+
+/* --- classify ------------------------------------------------------------ */
+s = blank(); put(s, 0, 'cassiopea', 1); put(s, 1, 'cassiopea', 1); put(s, 2, 'marchesa', 1);
+eq('drag onto an empty cell is a move', R.classify(s, 0, 5), 'move');
+eq('drag onto a twin is a merge', R.classify(s, 0, 1), 'merge');
+eq('drag onto a stranger is illegal', R.classify(s, 0, 2), null);
+eq('drag onto itself is illegal', R.classify(s, 0, 0), null);
+eq('drag from an empty cell is illegal', R.classify(s, 9, 0), null);
+eq('drag outside the tray is illegal', R.classify(s, 0, 99), null);
+
+/* A drop that hit-tests onto something with no cell index yields NaN. NaN fails
+   every range comparison, so an unguarded classify() called it an empty cell and
+   apply() then wrote the piece to cells[NaN] -- silently destroying it. */
+eq('a NaN target is illegal', R.classify(s, 0, NaN), null);
+eq('a NaN source is illegal', R.classify(s, NaN, 0), null);
+eq('an undefined target is illegal', R.classify(s, 0, undefined), null);
+eq('a fractional target is illegal', R.classify(s, 0, 2.5), null);
+
+var keep = blank(); var survivor = put(keep, 0, 'cassiopea', 1);
+var nanEvents = R.apply(keep, 0, NaN);
+eq('a NaN drop emits no events', nanEvents.length, 0);
+eq('a NaN drop does not destroy the piece', keep.cells[0], survivor);
+
+/* --- move ---------------------------------------------------------------- */
+s = blank(); var p = put(s, 0, 'cassiopea', 1);
+var e = R.apply(s, 0, 5);
+eq('a move relocates the piece', s.cells[5], p);
+eq('a move empties the source', s.cells[0], null);
+eq('a move scores nothing', s.score, 0);
+eq('a move emits one event', e.length, 1);
+eq('a move spawns nothing', evs(e, 'spawn').length, 0);
+
+/* --- merge to tier 2 ----------------------------------------------------- */
+s = blank(); put(s, 0, 'cassiopea', 1); put(s, 1, 'cassiopea', 1);
+e = R.apply(s, 0, 1);
+eq('two tier-1s make a tier-2', s.cells[1].tier, 2);
+eq('the tier-2 keeps the collection', s.cells[1].collection, 'cassiopea');
+eq('an intermediate merge is only a step, not a score', s.score, 0);
+eq('a merge emits a merge event', evs(e, 'merge').length, 1);
+eq('a merge refills the tray', evs(e, 'spawn').length, 1);
+
+/* --- merge to tier 3: scores and dissolves -------------------------------- */
+s = blank(); put(s, 0, 'marchesa', 2); put(s, 1, 'marchesa', 2);
+e = R.apply(s, 0, 1);
+eq('a finished piece scores five', s.score, 5);
+eq('a finished piece fills exactly one piercing', R.TARGET / R.EAR_SLOTS, 5);
+eq('seven finished pieces reach the target', 7 * R.SCORING.birthday[3], R.TARGET);
+eq('a tier-3 emits a score event', evs(e, 'score').length, 1);
+eq('the score event carries the crown', evs(e, 'score')[0].piece.tier, 3);
+ok('no tier-3 is left on the tray', s.cells.every(function (c) { return !c || c.tier < 3; }));
+
+/* --- a full chain: three merges, one finished piece ----------------------- */
+s = blank();
+put(s, 0, 'farfalla', 1); put(s, 1, 'farfalla', 1);
+put(s, 2, 'farfalla', 1); put(s, 3, 'farfalla', 1);
+R.apply(s, 0, 1);
+R.apply(s, 2, 3);
+R.apply(s, 1, 3);
+eq('a full chain is three merges and five points', s.score, 5);
+eq('the target is one point per year', R.TARGET, 35);
+eq('a finished piece brings a bonus tier-1 with it',
+   evs(R.apply(blankPair('marchesa', 2), 0, 1), 'spawn').length, 2);
+
+/* --- illegal moves are inert --------------------------------------------- */
+s = blank(); put(s, 0, 'cassiopea', 1); put(s, 2, 'marchesa', 1);
+var before = JSON.stringify(s.cells);
+e = R.apply(s, 0, 2);
+eq('an illegal drag returns no events', e.length, 0);
+eq('an illegal drag does not touch the tray', JSON.stringify(s.cells), before);
+eq('an illegal drag does not score', s.score, 0);
+
+/* --- deadlock ------------------------------------------------------------ */
+s = blank(); put(s, 0, 'cassiopea', 1);
+ok('an empty cell always means a legal move exists', R.hasLegalMove(s));
+
+s = blank();
+for (var i = 0; i < R.CELLS; i++) put(s, i, R.COLLECTIONS[i % 3], (i % 2) + 1);
+ok('a full tray with a twin still has a move', R.hasLegalMove(s));
+
+var jam = blank();
+for (i = 0; i < R.CELLS; i++) put(jam, i, 'cassiopea', 3);
+ok('a tray of un-mergeable crowns is jammed', !R.hasLegalMove(jam));
+
+/* --- relieve: birthday mode cannot be lost -------------------------------- */
+s = blank();
+var first = put(s, 3, 'cassiopea', 1);
+put(s, 4, 'marchesa', 1); put(s, 5, 'farfalla', 1);
+e = R.relieve(s);
+eq('relieve dissolves the oldest tier-1', s.cells[3], null);
+eq('relieve reports what it dissolved', e[0].piece.id, first.id);
+eq('relieve frees exactly one cell', R.emptyCells(s).length, R.CELLS - 2);
+
+s = blank(); put(s, 0, 'cassiopea', 2);
+eq('relieve never touches a tier-2', R.relieve(s).length, 0);
+
+/* --- ear meter ------------------------------------------------------------ */
+s = blank();
+eq('the ear starts empty', R.earFilled(s), 0);
+s.score = 5;  eq('5 points fills one piercing', R.earFilled(s), 1);
+s.score = 34; eq('34 points leaves the last one empty', R.earFilled(s), 6);
+s.score = 35; eq('35 points fills the ear', R.earFilled(s), R.EAR_SLOTS);
+s.score = 99; eq('the ear cannot overfill', R.earFilled(s), R.EAR_SLOTS);
+
+/* --- completion ----------------------------------------------------------- */
+s = blank(); s.score = 34; ok('34 points is not the birthday yet', !R.isComplete(s));
+s.score = 35; ok('35 points IS the birthday', R.isComplete(s));
+s.endless = true; ok('endless mode never completes', !R.isComplete(s));
+
+/* --- endless scores differently ------------------------------------------- */
+var bd = blank(); put(bd, 0, 'cassiopea', 1); put(bd, 1, 'cassiopea', 1);
+R.apply(bd, 0, 1);
+eq('birthday mode ignores an intermediate merge', bd.score, 0);
+
+var en = blank(); en.endless = true; put(en, 0, 'cassiopea', 1); put(en, 1, 'cassiopea', 1);
+R.apply(en, 0, 1);
+eq('endless mode counts every merge', en.score, 1);
+
+/* --- spawn capacity -------------------------------------------------------- */
+s = blank();
+for (i = 0; i < R.CELLS; i++) put(s, i, 'cassiopea', 1);
+eq('spawn is a no-op on a full tray', R.spawn(s).length, 0);
+
+document.getElementById('out').textContent =
+  lines.join('\n') + '\n\nRESULT ' + pass + '/' + (pass + fail) +
+  (fail ? ' - ' + fail + ' FAILED' : ' - ALL PASS');
+</script>

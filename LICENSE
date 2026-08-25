@@ -1,0 +1,95 @@
+# Licensing
+
+This repository holds several different kinds of material under different terms.
+They are NOT interchangeable, and in particular the photography, the branding and
+the voice recording are not open-licensed just because the code is.
+
+
+## 1. Code — MIT
+
+Applies to: `index.html`, `style.css`, `src/`, `tools/`, `tests.html`,
+`smoke.html`, `preview.html`, and the documentation in `README.md` and `docs/`.
+
+This includes the synthesised Eurodance sting in `src/sfx.js`, which is an
+original composition written for this project.
+
+    Copyright (c) 2026 the Auris Merge authors
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+
+## 2. Voice recording — all rights reserved
+
+Applies to `assets/sfx/voice.m4a` and the alternate takes in `assets/sfx/takes/`.
+
+Performed and recorded by Helen Allien Poe. Not covered by the MIT licence above,
+and not granted for reuse. It is a person singing to her brother; treat it the way
+you would the portrait in section 3.
+
+The lyric is sung to the cadence of Haddaway's "What Is Love" (1993, written by
+Dee Dee Halligan and Junior Torello). The words are original and so is the
+recording; the melody is not, and remains the property of its writers and their
+publishers.
+
+## 3. Photography, logos and branding — all rights reserved
+
+Applies to everything under `assets/pieces/`, `assets/bg/`, `assets/logo/` and
+`assets/portrait/`, and to the source photography in `choosed/` and
+`PROMO_Auris/` (which is not committed to this repository).
+
+**None of it is covered by the MIT licence above.** It is included so this
+specific game can be built and played, and is not granted for reuse,
+redistribution or modification.
+
+- **Auris** jewellery photography, the "AURIS" name and the Auris monogram.
+- **Saint Scalpelburg** studio photography and the Scalpelburg logo
+  (`assets/logo/scalpelburg.png`), which is a separate business and a separate
+  mark from Auris.
+- **`assets/portrait/vlad.jpg`** — a portrait of Vlad Bodmodov, used with his
+  family's knowledge. "Vlad Bodmodov" is a working name and he is a public figure
+  in his trade, with a comparable portrait already published on his studio's own
+  site, so this is his professional persona rather than private information. It
+  still is not a design asset: it belongs to this gift, and a forked or
+  promotional version needs his actual agreement, not merely the absence of an
+  objection.
+
+Anyone forking this repository for the code must replace all of it with their
+own material.
+
+
+## 4. A note on the celebrate cue
+
+`celebrate` has no committed audio file. The cue synthesises an original sting in
+`src/sfx.js` and is covered by the MIT licence in section 1.
+
+If a `celebrate` audio file is added locally, it is covered by whatever terms
+that recording carries, and this file should be updated to say so. A commercial
+recording is not licensed for public or promotional use merely by being placed in
+this folder.
+
+### Making a build that is clear of the melody
+
+The only borrowed thing in this repository is the tune the voice track is sung to
+(section 2). Removing it is deleting one file:
+
+    rm assets/sfx/voice.m4a assets/sfx/takes/*.m4a
+
+`celebrate` then falls back to the synthesised sting, which is original and needs
+no clearance. Nothing else changes and no code is touched. That is the build to
+use for anything published under the Auris or Scalpelburg name.
